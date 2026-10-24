@@ -1,0 +1,21 @@
+# Go binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+
+# Python / FastAPI
+__pycache__/
+.venv/
+venv/
+.env
+
+# Node / Frontend
+node_modules/
+dist/
+
+# Docker volumes
+data/
+backend-go/room-engine-core
