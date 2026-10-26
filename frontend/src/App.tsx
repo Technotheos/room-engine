@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Login } from './components/Login';
 import { Signup } from './components/Signup';
+import Home from './pages/Home';
+import RoomView from './roomView'; // Since roomView.tsx is directly inside src/
 import { useWebSocket } from './hooks/useWebSocket';
-import { MessageSquare, ArrowLeft, Send, Users, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Send } from 'lucide-react';
 
 export default function App() {
   const [token, setToken] = useState<string | null>(null);
@@ -23,7 +25,7 @@ export default function App() {
     }
   }, []);
 
-  const { messages, sendMessage } = useWebSocket(selectedRoom, username!);
+  const { messages, sendMessage } = useWebSocket(selectedRoom!);
 
   const handleLogout = () => {
     localStorage.removeItem('jwt_token');
@@ -54,46 +56,18 @@ export default function App() {
     );
   }
 
-  // 2. If authenticated but no room selected, show the Workspace Menu
+  // 2. If authenticated but no room selected, show your new Home Dashboard
   if (!selectedRoom) {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4">
-        <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl">
-          <div className="flex justify-between items-center mb-6">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">Learn Block Rooms</h1>
-              <p className="text-sm text-slate-400 mt-1">Logged in as: <span className="text-blue-400 font-medium">{username}</span></p>
-            </div>
-            <button
-              onClick={handleLogout}
-              className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg transition-colors"
-            >
-              Sign Out
-            </button>
-          </div>
-
-          <div className="space-y-3">
-            {[
-              { id: 'nasdaq-scalping', title: 'Nasdaq 1-Min Scalping Room', desc: 'Order flow dynamics, 3 to 8-minute scalp setups, and delta tracking.' },
-              { id: 'wasm-exploit', title: 'WebAssembly & Memory Exploitation', desc: 'Low-level sandboxing, JS engine heap smearing, and zero-day analysis.' },
-              { id: 'sys-go', title: 'Go Distributed Architecture', desc: 'Goroutines, thread-safe room broadcast packets, and WebSocket lifecycle.' },
-            ].map((room) => (
-              <div
-                key={room.id}
-                onClick={() => setSelectedRoom(room.id)}
-                className="p-4 bg-slate-950/50 hover:bg-slate-950 border border-slate-800/80 hover:border-blue-600/50 rounded-2xl cursor-pointer transition-all group"
-              >
-                <h3 className="text-blue-400 font-semibold group-hover:text-blue-300 transition-colors">{room.title}</h3>
-                <p className="text-xs text-slate-400 mt-1">{room.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+      <Home 
+        username={username}
+        onSelectRoom={(roomId) => setSelectedRoom(roomId)}
+        onLogout={handleLogout}
+      />
     );
   }
 
-  // 3. Active Room Chat View
+  // 3. Active Room Chat View (using your roomView or embedded layout)
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-2xl h-[85vh] bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl flex flex-col">
@@ -102,7 +76,7 @@ export default function App() {
             onClick={() => setSelectedRoom(null)}
             className="flex items-center gap-2 text-sm bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-xl transition-colors"
           >
-            <ArrowLeft size={16} /> Back
+            <ArrowLeft size={16} /> Back to Dashboard
           </button>
           <span className="font-semibold text-slate-200">Room: {selectedRoom}</span>
         </div>

@@ -1,10 +1,62 @@
 import React, { useState } from 'react';
-import { Lock, User, Mail, ArrowRight } from 'lucide-react';
+import { Lock, Mail, User } from 'lucide-react';
+import { API_URL, readError, isNetworkError } from './authApi';
+import { AuthShell, ErrorBanner, Field, LinkButton, SubmitButton } from './AuthShell';
 
 interface SignupProps {
   onSignupSuccess: () => void;
   onSwitchToLogin: () => void;
 }
+
+// These mirror the server rules in auth.go so users get instant feedback.
+const USERNAME_RE = /^[A-Za-z0-9_.-]{3,32}$/;
+const MIN_PASSWORD = 12;
+const MAX_PASSWORD_BYTES = 72; // bcrypt limit
+
+// Cosmetic only: the server enforces length, not these extra tiers.
+const STRENGTH_LABELS = ['', 'Fair', 'Good', 'Strong', 'Stellar'];
+const STRENGTH_COLORS = ['', 'bg-amber-400', 'bg-sky-400', 'bg-indigo-400', 'bg-emerald-400'];
+
+function passwordStrength(pw: string): number {
+  if (pw.length < MIN_PASSWORD) return 0;
+  let score = 1;
+  if (pw.length >= 16) score++;
+  const classes = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].filter((r) => r.test(pw)).length;
+  if (classes >= 3) score++;
+  if (pw.length >= 20) score++;
+  return score;
+}
+
+const PasswordHint: React.FC<{ password: string }> = ({ password }) => {
+  const len = password.length;
+  const score = passwordStrength(password);
+
+  let text = `At least ${MIN_PASSWORD} characters. A passphrase works well.`;
+  let tone = 'text-slate-500';
+  if (len > 0 && score === 0) {
+    text = `${len}/${MIN_PASSWORD} characters`;
+    tone = 'text-amber-400';
+  } else if (score > 0) {
+    text = `${STRENGTH_LABELS[score]} · ${len} characters`;
+    tone = 'text-slate-400';
+  }
+
+  return (
+    <>
+      <div className="flex gap-1" aria-hidden="true">
+        {[1, 2, 3, 4].map((i) => (
+          <div
+            key={i}
+            className={`h-1 flex-1 rounded-full transition-all duration-500 ${
+              i <= score ? STRENGTH_COLORS[score] : 'bg-white/10'
+            }`}
+          />
+        ))}
+      </div>
+      <p className={`mt-1.5 text-[11px] ${tone}`}>{text}</p>
+    </>
+  );
+};
 
 export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onSwitchToLogin }) => {
   const [username, setUsername] = useState('');
@@ -13,122 +65,119 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onSwitchToLogin
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const validate = (): string | null => {
+    if (!USERNAME_RE.test(username.trim())) {
+      return 'Username must be 3-32 characters: letters, numbers, "_", "." or "-".';
+    }
+    if (password.length < MIN_PASSWORD) {
+      return `Password must be at least ${MIN_PASSWORD} characters.`;
+    }
+    if (new TextEncoder().encode(password).length > MAX_PASSWORD_BYTES) {
+      return `Password is too long (max ${MAX_PASSWORD_BYTES} bytes).`;
+    }
+    return null;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     setError('');
+
+    const problem = validate();
+    if (problem) {
+      setError(problem);
+      return;
+    }
+
     setLoading(true);
-
     try {
-      const formData = new URLSearchParams();
-      formData.append('username', username);
-      formData.append('email', email);
-      formData.append('password', password);
+      const body = new URLSearchParams({
+        username: username.trim(),
+        email: email.trim(),
+        password,
+      });
 
-      const response = await fetch('http://localhost:8080/api/signup', {
+      const response = await fetch(`${API_URL}/api/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: formData,
+        body,
       });
 
       if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(errText || 'Failed to create account');
+        throw new Error(await readError(response, 'Failed to create account.'));
       }
 
       onSignupSuccess();
-    } catch (err: any) {
-      setError(err.message || 'Registration failed');
+    } catch (err) {
+      if (isNetworkError(err)) {
+        setError('Cannot reach the server. Check that it is running and try again.');
+      } else {
+        setError(err instanceof Error ? err.message : 'Registration failed.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl backdrop-blur-xl">
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold tracking-tight">Create Account</h2>
-          <p className="text-sm text-slate-400 mt-1">Register your operator ID for persistent room access</p>
-        </div>
+    <AuthShell
+      title="Create Account"
+      subtitle="Register your operator ID for persistent room access"
+      footer={
+        <>
+          Already have an account? <LinkButton onClick={onSwitchToLogin}>Sign In</LinkButton>
+        </>
+      }
+    >
+      <ErrorBanner message={error} />
 
-        {error && (
-          <div className="mb-4 p-3 bg-red-950/50 border border-red-800 text-red-200 text-sm rounded-lg">
-            {error}
-          </div>
-        )}
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <Field
+          id="signup-username"
+          label="Username"
+          icon={<User size={16} />}
+          type="text"
+          required
+          minLength={3}
+          maxLength={32}
+          autoComplete="username"
+          autoCapitalize="none"
+          spellCheck={false}
+          placeholder="trader_operator"
+          value={username}
+          onValueChange={setUsername}
+          hint={<p className="text-[11px] text-slate-500">3-32 characters: letters, numbers, _ . -</p>}
+        />
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">Username</label>
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
-                <User size={16} />
-              </span>
-              <input
-                type="text"
-                required
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 pl-10 pr-4 text-sm text-slate-100 focus:outline-none focus:border-blue-600 transition-colors"
-                placeholder="trader_operator"
-              />
-            </div>
-          </div>
+        <Field
+          id="signup-email"
+          label="Email"
+          icon={<Mail size={16} />}
+          type="email"
+          required
+          maxLength={254}
+          autoComplete="email"
+          placeholder="operator@domain.com"
+          value={email}
+          onValueChange={setEmail}
+        />
 
-          <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">Email</label>
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
-                <Mail size={16} />
-              </span>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 pl-10 pr-4 text-sm text-slate-100 focus:outline-none focus:border-blue-600 transition-colors"
-                placeholder="operator@domain.com"
-              />
-            </div>
-          </div>
+        <Field
+          id="signup-password"
+          label="Password"
+          icon={<Lock size={16} />}
+          type="password"
+          required
+          minLength={MIN_PASSWORD}
+          autoComplete="new-password"
+          placeholder="••••••••••••"
+          value={password}
+          onValueChange={setPassword}
+          hint={<PasswordHint password={password} />}
+        />
 
-          <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">Password</label>
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
-                <Lock size={16} />
-              </span>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 pl-10 pr-4 text-sm text-slate-100 focus:outline-none focus:border-blue-600 transition-colors"
-                placeholder="••••••••"
-              />
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full mt-2 bg-blue-600 hover:bg-blue-500 text-white font-medium py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-          >
-            {loading ? 'Creating Account...' : 'Sign Up'}
-            <ArrowRight size={16} />
-          </button>
-        </form>
-
-        <div className="mt-6 text-center text-sm text-slate-400">
-          Already have an account?{' '}
-          <button
-            onClick={onSwitchToLogin}
-            className="text-blue-400 hover:underline font-medium"
-          >
-            Sign In
-          </button>
-        </div>
-      </div>
-    </div>
+        <SubmitButton loading={loading}>{loading ? 'Creating Account...' : 'Sign Up'}</SubmitButton>
+      </form>
+    </AuthShell>
   );
 };
