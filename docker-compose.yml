@@ -1,23 +1,39 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:15-alpine
     container_name: room_postgres
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: root
-      POSTGRES_PASSWORD: secretpassword
-      POSTGRES_DB: room_engine
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
     ports:
-      - "5432:5432"
+      # Loopback only: reachable from your machine, not from your network.
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
-  redis:
-    image: redis:7-alpine
-    container_name: room_redis
-    ports:
-      - "6379:6379"
+  # One-shot migration runner. Not started by `docker compose up`.
+  #   docker compose run --rm migrate            -> apply all pending migrations
+  #   docker compose run --rm migrate -path /migrations \
+  #     -database "$DATABASE_URL_INTERNAL" down 1 -> roll back one (see README note)
+  migrate:
+    image: migrate/migrate:v4.17.1
+    profiles: ["tools"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./db/migrations:/migrations:ro
+    command:
+      - "-path=/migrations"
+      - "-database=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
+      - "up"
 
 volumes:
   pgdata:

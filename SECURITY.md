@@ -103,29 +103,3 @@ Non-browser clients can send `Authorization: Bearer <token>` instead.
 
 `main.go` uses `http.Server` with header/read/write/idle timeouts (slowloris protection), a 16 KB header limit and graceful shutdown. These timeouts stop applying after a connection is upgraded to a WebSocket; `ws.go` manages its own deadlines.
 
----
-
-## Known limitations / TODO
-
-These are **not** solved yet. Do not treat the current build as production-ready without addressing them:
-
-- **User storage is in memory.** Accounts disappear on restart. Needs a real database.
-- **Rate limits and lockouts are per-process.** With multiple instances, use a shared store (e.g. Redis). Rooms are also per-process, so multi-instance needs pub/sub.
-- **No room authorization.** Any logged-in user can join any valid room. The `canJoinRoom` hook in `ws.go` is where to add membership/invite checks.
-- **No refresh tokens or revocation.** Access tokens last 15 minutes and sockets close at expiry, so users must log in again unless a refresh flow is added (or `tokenTTL` is raised). There is no logout-side invalidation of an issued token.
-- **Username enumeration at signup.** "Username already taken" reveals existing usernames. Fully avoiding this needs email-verified signup.
-- **No email verification or password reset.**
-- **TLS is not enforced.** Without `TLS_CERT_FILE`/`TLS_KEY_FILE` the server speaks plain HTTP. Always use HTTPS/WSS in production.
-- **Message content is relayed as-is.** Frontends must render chat content as text, never as HTML, to avoid XSS.
-
----
-
-## Before you push or deploy
-
-- [ ] `JWT_SECRET` is set via environment, and `.env` is in `.gitignore`.
-- [ ] If an old hardcoded secret was ever committed, **rotate it**. Removing it from the code does not remove it from git history.
-- [ ] `ALLOWED_ORIGINS` lists only your real frontends.
-- [ ] The server runs behind HTTPS/WSS.
-- [ ] The frontend connects with `["bearer", token]`, not `?token=`.
-
----

@@ -1,1 +1,0 @@
-print("i don't i may use django and some python frameworks if they can serve something robust")
